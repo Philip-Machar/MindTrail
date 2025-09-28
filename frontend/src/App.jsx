@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Upload, BookOpen, Trophy, Coins, Flame, CheckCircle, XCircle, Star, Target, Brain, Timer } from 'lucide-react';
+import { Upload, BookOpen, Trophy, Coins, Flame, CheckCircle, XCircle, Star, Target, Brain, Timer, Volume2, VolumeX } from 'lucide-react';
 
 const App = () => {
   // API Configuration
@@ -43,6 +43,8 @@ const App = () => {
   const [dailyPreview, setDailyPreview] = useState(null);
   const [showRedeemModal, setShowRedeemModal] = useState(false);
   const [streakHistory, setStreakHistory] = useState([]);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentAudio, setCurrentAudio] = useState(null);
 
   useEffect(() => {
     fetchUserStats();
@@ -186,6 +188,58 @@ const App = () => {
       fetchLeaderboard(); // Update leaderboard after redemption
     } catch (e) {
       setError(e.message);
+    }
+  };
+
+  // Text-to-Speech functions
+  const playTextToSpeech = async (text) => {
+    try {
+      // Stop current audio if playing
+      if (currentAudio) {
+        currentAudio.pause();
+        currentAudio.currentTime = 0;
+      }
+
+      const response = await fetch(`${API_BASE_URL}/tts/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to generate speech');
+      }
+
+      const audioBlob = await response.blob();
+      const audioUrl = URL.createObjectURL(audioBlob);
+      const audio = new Audio(audioUrl);
+      
+      setCurrentAudio(audio);
+      setIsPlaying(true);
+
+      audio.onended = () => {
+        setIsPlaying(false);
+        URL.revokeObjectURL(audioUrl);
+      };
+
+      audio.onerror = () => {
+        setIsPlaying(false);
+        setError('Failed to play audio');
+        URL.revokeObjectURL(audioUrl);
+      };
+
+      await audio.play();
+    } catch (error) {
+      setIsPlaying(false);
+      setError('Text-to-speech failed: ' + error.message);
+    }
+  };
+
+  const stopTextToSpeech = () => {
+    if (currentAudio) {
+      currentAudio.pause();
+      currentAudio.currentTime = 0;
+      setIsPlaying(false);
     }
   };
 
@@ -916,7 +970,20 @@ const App = () => {
                 </div>
                 
                 <div className="mb-6">
-                  <h4 className="text-lg font-semibold text-blue-200 mb-3">{currentParagraph.title}</h4>
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-lg font-semibold text-blue-200">{currentParagraph.title}</h4>
+                    <button
+                      onClick={() => isPlaying ? stopTextToSpeech() : playTextToSpeech(currentParagraph.content)}
+                      className="bg-blue-500/80 hover:bg-blue-400/80 p-2 rounded-full transition-all"
+                      title={isPlaying ? "Stop reading" : "Read aloud"}
+                    >
+                      {isPlaying ? (
+                        <VolumeX className="w-4 h-4 text-white" />
+                      ) : (
+                        <Volume2 className="w-4 h-4 text-white" />
+                      )}
+                    </button>
+                  </div>
                   <p className="text-lg text-blue-100 leading-relaxed">{currentParagraph.content}</p>
                 </div>
 

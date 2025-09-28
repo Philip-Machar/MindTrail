@@ -11,6 +11,9 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// ElevenLabs TTS
+const axios = require('axios');
+
 // Initialize Gemini AI
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
@@ -252,6 +255,49 @@ Remember: Maintain academic depth while making content accessible. Students shou
   } catch (error) {
     console.error('Error generating learning content:', error);
     throw new Error('Failed to generate learning content: ' + error.message);
+  }
+};
+
+// Text-to-Speech using ElevenLabs
+const generateSpeech = async (text) => {
+  try {
+    if (!process.env.ELEVENLABS_API_KEY) {
+      throw new Error('ElevenLabs API key not configured');
+    }
+
+    const response = await axios.post(
+      'https://api.elevenlabs.io/v1/text-to-speech/pNInz6obpgDQGcFmaJgB', // Default voice ID
+      {
+        text: text,
+        model_id: 'eleven_monolingual_v1',
+        voice_settings: {
+          stability: 0.5,
+          similarity_boost: 0.5
+        }
+      },
+      {
+        headers: {
+          'Accept': 'audio/mpeg',
+          'Content-Type': 'application/json',
+          'xi-api-key': process.env.ELEVENLABS_API_KEY
+        },
+        responseType: 'arraybuffer',
+        timeout: 30000 // 30 second timeout
+      }
+    );
+
+    return response.data;
+  } catch (error) {
+    console.error('Error generating speech:', error);
+    if (error.response?.status === 401) {
+      throw new Error('Invalid ElevenLabs API key. Please check your API key.');
+    } else if (error.response?.status === 429) {
+      throw new Error('ElevenLabs API rate limit exceeded. Please try again later.');
+    } else if (error.code === 'ECONNABORTED') {
+      throw new Error('Request timeout. Please try again.');
+    } else {
+      throw new Error('Failed to generate speech: ' + (error.message || 'Unknown error'));
+    }
   }
 };
 
@@ -941,6 +987,35 @@ app.post('/api/badges/redeem', (req, res) => {
   }
 });
 
+// Text-to-Speech endpoint
+app.post('/api/tts/generate', async (req, res) => {
+  try {
+    const { text } = req.body;
+    
+    if (!text || text.trim().length === 0) {
+      return res.status(400).json({ error: 'Text is required' });
+    }
+
+    if (text.length > 5000) {
+      return res.status(400).json({ error: 'Text too long. Maximum 5000 characters.' });
+    }
+
+    const audioBuffer = await generateSpeech(text);
+    
+    res.set({
+      'Content-Type': 'audio/mpeg',
+      'Content-Length': audioBuffer.length,
+      'Cache-Control': 'no-cache'
+    });
+    
+    res.send(audioBuffer);
+    
+  } catch (error) {
+    console.error('Error in TTS endpoint:', error);
+    res.status(500).json({ error: 'Failed to generate speech' });
+  }
+});
+
 // Create uploads directory
 const createUploadsDir = async () => {
   try {
@@ -954,16 +1029,22 @@ const createUploadsDir = async () => {
 const startServer = async () => {
   await createUploadsDir();
   
-  // Check if Gemini API key is set
+  // Check if API keys are set
   if (!process.env.GEMINI_API_KEY) {
     console.warn('⚠️  WARNING: GEMINI_API_KEY not set. Please add it to your .env file');
     console.warn('   Get your API key from: https://makersuite.google.com/app/apikey');
+  }
+  
+  if (!process.env.ELEVENLABS_API_KEY) {
+    console.warn('⚠️  WARNING: ELEVENLABS_API_KEY not set. Text-to-speech will not work');
+    console.warn('   Get your API key from: https://elevenlabs.io/app/settings/api-keys');
   }
   
   app.listen(PORT, () => {
     console.log(`🚀 MindTrail Simple Backend running on port ${PORT}`);
     console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
     console.log(`🔑 Gemini API: ${process.env.GEMINI_API_KEY ? '✅ Connected' : '❌ Not configured'}`);
+    console.log(`🎤 ElevenLabs TTS: ${process.env.ELEVENLABS_API_KEY ? '✅ Connected' : '❌ Not configured'}`);
     console.log(`📁 Upload directory: ./uploads/`);
     console.log(`🌐 CORS enabled for: http://localhost:3000`);
   });
