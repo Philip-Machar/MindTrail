@@ -51,7 +51,12 @@ let userStats = {
   streak: 1,
   badges: [
     { name: "First Steps", icon: "🌟", earned: true, earnedAt: new Date().toISOString() }
-  ]
+  ],
+  completedTopics: [],
+  dailyChallenge: {
+    bestScore: 0,
+    lastPlayedAt: null
+  }
 };
 
 // Helper Functions
@@ -122,39 +127,53 @@ const extractTextFromImage = async (filePath) => {
 
 const generateLearningContent = async (topic, extractedText = '') => {
   try {
-    const basePrompt = `You are an expert educator specializing in creating engaging, bite-sized learning content for students with ADHD and dyslexia. Your task is to break down complex topics into digestible, interactive lessons, don't dumb down the content, keep it engaging and interesting.
+    const basePrompt = `You are an expert educator who creates comprehensive, academically rigorous learning content. Your goal is to make complex topics accessible while maintaining the depth and detail needed for exam success. Break down topics into digestible paragraphs that build understanding progressively.
 
 ${topic ? `Topic: ${topic}` : ''}
 ${extractedText ? `Source Material: ${extractedText}` : ''}
 
-Please create a comprehensive learning experience with the following structure:
+Create a structured learning experience with the following format:
 
-1. EXPLANATION: Write 2-3 short, engaging paragraphs (2-3 sentences each) that explain the topic in a fun, relatable way but don't dumb it down too much. Use analogies, real-world examples, and simple language. Make it conversational and exciting.
+1. PARAGRAPHS: Break the topic into 4-6 focused paragraphs (3-4 sentences each). Each paragraph should:
+   - Cover one key concept or aspect of the topic
+   - Use clear, precise language while maintaining academic rigor
+   - Include relevant examples, analogies, or real-world applications
+   - Build upon previous paragraphs to create a complete understanding
+   - Be detailed enough for exam preparation
 
-2. QUIZ QUESTIONS: Create 3-4 multiple choice questions that test understanding. Each question should have:
-   - A clear, simple question
-   - 4 answer options (A, B, C, D)
-   - Only ONE correct answer
-   - Options that are clearly different from each other
+2. QUIZ QUESTIONS: Create 4-6 multiple choice questions that test comprehensive understanding. Each question should:
+   - Test different aspects of the topic covered in the paragraphs
+   - Have 4 answer options (A, B, C, D)
+   - Include one correct answer and three plausible distractors
+   - Require genuine understanding, not just memorization
 
-3. KEY TAKEAWAYS: Provide 2-3 main points students should remember
+3. KEY TAKEAWAYS: Provide 3-5 main points that summarize the essential knowledge
 
 Format your response as a JSON object with this exact structure:
 {
-  "explanation": "Your engaging explanation here...",
+  "paragraphs": [
+    {
+      "content": "First paragraph content...",
+      "title": "Brief title for this paragraph"
+    },
+    {
+      "content": "Second paragraph content...",
+      "title": "Brief title for this paragraph"
+    }
+  ],
   "questions": [
     {
       "question": "Question text?",
       "options": ["Option A", "Option B", "Option C", "Option D"],
       "correct": 0,
-      "explanation": "Why this answer is correct"
+      "explanation": "Detailed explanation of why this answer is correct"
     }
   ],
   "keyTakeaways": ["Key point 1", "Key point 2", "Key point 3"],
   "encouragement": "Motivational message for starting this topic"
 }
 
-Remember: Keep language simple, use exciting analogies but don't dumb it down too much, and make learning feel like an adventure!`;
+Remember: Maintain academic depth while making content accessible. Students should be able to pass exams after completing this material.`;
 
     const result = await model.generateContent(basePrompt);
     const responseText = result.response.text();
@@ -168,7 +187,8 @@ Remember: Keep language simple, use exciting analogies but don't dumb it down to
     const learningContent = JSON.parse(jsonMatch[0]);
     
     // Validate the structure
-    if (!learningContent.explanation || !learningContent.questions || !Array.isArray(learningContent.questions)) {
+    if (!learningContent.paragraphs || !Array.isArray(learningContent.paragraphs) || 
+        !learningContent.questions || !Array.isArray(learningContent.questions)) {
       throw new Error('Invalid learning content structure');
     }
     
@@ -192,7 +212,24 @@ app.get('/api/health', (req, res) => {
 
 // Get User Stats (simplified)
 app.get('/api/user/stats', (req, res) => {
-  res.json(userStats);
+  res.json({
+    ...userStats,
+    completedTopics: userStats.completedTopics || []
+  });
+});
+
+// Get Leaderboard
+app.get('/api/leaderboard', (req, res) => {
+  // For demo purposes, create some sample leaderboard data
+  const sampleLeaderboard = [
+    { name: "Alex", coins: 1250, topicsCompleted: 8, streak: 12 },
+    { name: "Sarah", coins: 980, topicsCompleted: 6, streak: 8 },
+    { name: "Mike", coins: 750, topicsCompleted: 5, streak: 5 },
+    { name: "Emma", coins: 620, topicsCompleted: 4, streak: 3 },
+    { name: "You", coins: userStats.coins, topicsCompleted: userStats.completedTopics?.length || 0, streak: userStats.streak }
+  ].sort((a, b) => b.coins - a.coins);
+  
+  res.json({ leaderboard: sampleLeaderboard });
 });
 
 // Process Learning Content (Topic or File)
@@ -238,11 +275,17 @@ app.post('/api/learning/process', upload.single('file'), async (req, res) => {
     // Store learning session
     const sessionId = Date.now().toString();
     learningProgress[sessionId] = {
-      content: learningContent,
+      content: {
+        ...learningContent,
+        topicName: topic || 'Uploaded File'
+      },
       progress: {
+        currentParagraph: 0,
         currentQuestion: 0,
         correctAnswers: 0,
+        totalParagraphs: learningContent.paragraphs.length,
         totalQuestions: learningContent.questions.length,
+        paragraphsCompleted: false,
         completed: false
       },
       createdAt: new Date().toISOString()
@@ -252,7 +295,9 @@ app.post('/api/learning/process', upload.single('file'), async (req, res) => {
     
     res.json({
       sessionId,
-      explanation: learningContent.explanation,
+      currentParagraph: learningContent.paragraphs[0],
+      paragraphNumber: 1,
+      totalParagraphs: learningContent.paragraphs.length,
       totalQuestions: learningContent.questions.length,
       encouragement: learningContent.encouragement,
       keyTakeaways: learningContent.keyTakeaways
@@ -267,7 +312,128 @@ app.post('/api/learning/process', upload.single('file'), async (req, res) => {
   }
 });
 
-// Get Next Question
+// Get Next Paragraph
+app.get('/api/learning/:sessionId/paragraph', (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const session = learningProgress[sessionId];
+    
+    if (!session) {
+      return res.status(404).json({ error: 'Learning session not found' });
+    }
+    
+    if (session.progress.paragraphsCompleted) {
+      return res.status(400).json({ error: 'All paragraphs have been completed' });
+    }
+    
+    const currentParagraphIndex = session.progress.currentParagraph;
+    const paragraph = session.content.paragraphs[currentParagraphIndex];
+    
+    if (!paragraph) {
+      return res.status(404).json({ error: 'No more paragraphs available' });
+    }
+    
+    res.json({
+      paragraphNumber: currentParagraphIndex + 1,
+      totalParagraphs: session.progress.totalParagraphs,
+      paragraph: paragraph,
+      progress: Math.round(((currentParagraphIndex) / session.progress.totalParagraphs) * 100)
+    });
+    
+  } catch (error) {
+    console.error('Error getting paragraph:', error);
+    res.status(500).json({ error: 'Failed to get paragraph' });
+  }
+});
+
+// Submit User Question for Current Paragraph
+app.post('/api/learning/:sessionId/question', async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const { userQuestion } = req.body;
+    
+    const session = learningProgress[sessionId];
+    if (!session) {
+      return res.status(404).json({ error: 'Learning session not found' });
+    }
+    
+    const currentParagraphIndex = session.progress.currentParagraph;
+    const paragraph = session.content.paragraphs[currentParagraphIndex];
+    
+    if (!paragraph) {
+      return res.status(400).json({ error: 'No active paragraph' });
+    }
+    
+    // Generate answer using Gemini
+    const questionPrompt = `A student is learning about this topic and just read this paragraph:
+
+PARAGRAPH: "${paragraph.content}"
+
+The student asks: "${userQuestion}"
+
+Please provide a helpful, detailed answer that:
+1. Directly addresses their question
+2. Builds on the paragraph content they just read
+3. Maintains academic rigor while being clear
+4. Helps them understand the connection to the broader topic
+5. Prepares them for exam-level understanding
+
+Keep your response concise but comprehensive (2-3 sentences).`;
+
+    const result = await model.generateContent(questionPrompt);
+    const answer = result.response.text();
+    
+    res.json({
+      answer: answer,
+      paragraphNumber: currentParagraphIndex + 1
+    });
+    
+  } catch (error) {
+    console.error('Error answering user question:', error);
+    res.status(500).json({ error: 'Failed to answer question' });
+  }
+});
+
+// Move to Next Paragraph
+app.post('/api/learning/:sessionId/next-paragraph', (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const session = learningProgress[sessionId];
+    
+    if (!session) {
+      return res.status(404).json({ error: 'Learning session not found' });
+    }
+    
+    session.progress.currentParagraph++;
+    
+    // Check if all paragraphs completed
+    const paragraphsCompleted = session.progress.currentParagraph >= session.progress.totalParagraphs;
+    session.progress.paragraphsCompleted = paragraphsCompleted;
+    
+    if (paragraphsCompleted) {
+      res.json({
+        paragraphsCompleted: true,
+        message: 'All paragraphs completed! Ready for quiz.',
+        progress: 100
+      });
+    } else {
+      const nextParagraph = session.content.paragraphs[session.progress.currentParagraph];
+      res.json({
+        paragraphsCompleted: false,
+        nextParagraph: nextParagraph,
+        paragraphNumber: session.progress.currentParagraph + 1,
+        totalParagraphs: session.progress.totalParagraphs,
+        progress: Math.round(((session.progress.currentParagraph) / session.progress.totalParagraphs) * 100)
+      });
+    }
+    
+  } catch (error) {
+    console.error('Error moving to next paragraph:', error);
+    res.status(500).json({ error: 'Failed to move to next paragraph' });
+  }
+});
+
+// Get Next Question (Quiz after paragraphs)
 app.get('/api/learning/:sessionId/question', (req, res) => {
   try {
     const { sessionId } = req.params;
@@ -275,6 +441,10 @@ app.get('/api/learning/:sessionId/question', (req, res) => {
     
     if (!session) {
       return res.status(404).json({ error: 'Learning session not found' });
+    }
+    
+    if (!session.progress.paragraphsCompleted) {
+      return res.status(400).json({ error: 'Must complete all paragraphs before starting quiz' });
     }
     
     if (session.progress.completed) {
@@ -339,6 +509,18 @@ app.post('/api/learning/:sessionId/answer', (req, res) => {
       userStats.coins += 50; // Completion bonus
       userStats.streak += 1;
       
+      // Track completed topic
+      const session = learningProgress[sessionId];
+      if (session && session.content) {
+        const topicName = session.content.topicName || 'Unknown Topic';
+        userStats.completedTopics.push({
+          name: topicName,
+          completedAt: new Date().toISOString(),
+          coinsEarned: 50,
+          score: Math.round((session.progress.correctAnswers / session.progress.totalQuestions) * 100)
+        });
+      }
+      
       // Award badges
       if (!userStats.badges.find(b => b.name === 'Topic Master')) {
         userStats.badges.push({ 
@@ -395,7 +577,8 @@ app.post('/api/reset', (req, res) => {
     streak: 1,
     badges: [
       { name: "First Steps", icon: "🌟", earned: true, earnedAt: new Date().toISOString() }
-    ]
+    ],
+    completedTopics: []
   };
   res.json({ message: 'Progress reset successfully' });
 });
@@ -409,6 +592,180 @@ app.use((error, req, res, next) => {
   }
   console.error('Server error:', error);
   res.status(500).json({ error: 'Something went wrong!' });
+});
+
+// ---------------------------
+// Daily Challenge Endpoints
+// ---------------------------
+
+// In-memory daily challenges
+let dailyChallenges = {};
+let preparedDaily = {};
+
+const generateDailyQuestions = async () => {
+  // Try Gemini-generated questions; fall back to static if fails
+  try {
+    const prompt = `Create 40 rapid-fire general knowledge multiple-choice questions suitable for a 60-second blitz. Return ONLY JSON with this exact structure:
+{
+  "questions": [
+    { "q": "Question text?", "options": ["Option A","Option B","Option C","Option D"], "correct": 0 }
+  ]
+}
+Questions must be short, unambiguous, and cover diverse topics (science, history, geography, vocabulary, math quick facts).`;
+    const result = await model.generateContent(prompt);
+    const text = result.response.text();
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    const parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+    if (!parsed || !Array.isArray(parsed.questions) || parsed.questions.length === 0) throw new Error('Bad structure');
+    return parsed.questions;
+  } catch (e) {
+    return [
+      { q: 'Capital of France?', options: ['Paris','Berlin','Madrid','Rome'], correct: 0 },
+      { q: '2 + 2 = ?', options: ['3','4','5','6'], correct: 1 },
+      { q: 'Water chemical formula?', options: ['CO2','H2O','NaCl','O2'], correct: 1 },
+      { q: 'Largest planet?', options: ['Mars','Earth','Jupiter','Venus'], correct: 2 },
+      { q: 'Author of "1984"?', options: ['Orwell','Huxley','Tolkien','Rowling'], correct: 0 },
+      { q: 'Fastest land animal?', options: ['Cheetah','Lion','Horse','Tiger'], correct: 0 },
+      { q: 'Prime number?', options: ['9','15','21','17'], correct: 3 },
+      { q: 'Boiling point of water (°C)?', options: ['90','95','100','120'], correct: 2 },
+      { q: 'Ocean between Africa and Australia?', options: ['Atlantic','Indian','Arctic','Pacific'], correct: 1 },
+      { q: 'Symbol for Sodium?', options: ['So','Na','Sn','Sd'], correct: 1 }
+    ];
+  }
+};
+
+const getTimeRemainingMs = (challenge) => {
+  const endAt = challenge.startedAt + challenge.durationMs;
+  return Math.max(0, endAt - Date.now());
+};
+
+app.post('/api/daily-challenge/start', async (req, res) => {
+  try {
+    const preparedId = req.body?.preparedId;
+    const challengeId = Date.now().toString();
+    const questions = preparedId && preparedDaily[preparedId]
+      ? preparedDaily[preparedId].questions
+      : await generateDailyQuestions();
+    dailyChallenges[challengeId] = {
+      id: challengeId,
+      startedAt: Date.now(),
+      durationMs: 60 * 1000,
+      index: 0,
+      score: 0,
+      questions
+    };
+    userStats.dailyChallenge.lastPlayedAt = new Date().toISOString();
+    res.json({
+      challengeId,
+      timeRemainingMs: 60 * 1000,
+      firstQuestion: questions[0]
+        ? { q: questions[0].q, options: questions[0].options, questionNumber: 1 }
+        : null
+    });
+  } catch (error) {
+    console.error('Error starting daily challenge:', error);
+    res.status(500).json({ error: 'Failed to start daily challenge' });
+  }
+});
+
+// Prepare daily challenge ahead of time (generate and cache questions)
+app.post('/api/daily-challenge/prepare', async (req, res) => {
+  try {
+    const preparedId = Date.now().toString();
+    const questions = await generateDailyQuestions();
+    preparedDaily[preparedId] = {
+      id: preparedId,
+      questions,
+      createdAt: Date.now()
+    };
+    // Return minimal preview to allow instant UI render
+    const preview = questions[0]
+      ? { q: questions[0].q, options: questions[0].options }
+      : null;
+    res.json({ preparedId, preview });
+  } catch (error) {
+    console.error('Error preparing daily challenge:', error);
+    res.status(500).json({ error: 'Failed to prepare daily challenge' });
+  }
+});
+
+app.get('/api/daily-challenge/:id/question', (req, res) => {
+  try {
+    const { id } = req.params;
+    const challenge = dailyChallenges[id];
+    if (!challenge) return res.status(404).json({ error: 'Challenge not found' });
+
+    const remaining = getTimeRemainingMs(challenge);
+    if (remaining <= 0) {
+      return res.json({ completed: true, score: challenge.score, timeRemainingMs: 0 });
+    }
+
+    const q = challenge.questions[challenge.index];
+    if (!q) return res.json({ completed: true, score: challenge.score, timeRemainingMs: remaining });
+
+    res.json({
+      completed: false,
+      questionNumber: challenge.index + 1,
+      question: q.q,
+      options: q.options,
+      timeRemainingMs: remaining,
+      score: challenge.score
+    });
+  } catch (error) {
+    console.error('Error getting daily question:', error);
+    res.status(500).json({ error: 'Failed to get question' });
+  }
+});
+
+app.post('/api/daily-challenge/:id/answer', (req, res) => {
+  try {
+    const { id } = req.params;
+    const { selectedAnswer } = req.body;
+    const challenge = dailyChallenges[id];
+    if (!challenge) return res.status(404).json({ error: 'Challenge not found' });
+
+    const remaining = getTimeRemainingMs(challenge);
+    if (remaining <= 0) {
+      return res.json({ completed: true, score: challenge.score, timeRemainingMs: 0, userStats });
+    }
+
+    const q = challenge.questions[challenge.index];
+    if (!q) {
+      return res.json({ completed: true, score: challenge.score, timeRemainingMs: remaining, userStats });
+    }
+
+    const isCorrect = parseInt(selectedAnswer) === q.correct;
+    if (isCorrect) {
+      challenge.score += 1;
+      userStats.coins += 10;
+    }
+    challenge.index += 1;
+
+    const nextRemaining = getTimeRemainingMs(challenge);
+    const completed = nextRemaining <= 0 || challenge.index >= challenge.questions.length;
+
+    if (completed) {
+      if (challenge.score > userStats.dailyChallenge.bestScore) {
+        userStats.dailyChallenge.bestScore = challenge.score;
+      }
+    }
+
+    res.json({
+      correct: isCorrect,
+      score: challenge.score,
+      completed,
+      timeRemainingMs: nextRemaining,
+      userStats: {
+        coins: userStats.coins,
+        streak: userStats.streak,
+        badges: userStats.badges,
+        dailyChallenge: userStats.dailyChallenge
+      }
+    });
+  } catch (error) {
+    console.error('Error submitting daily answer:', error);
+    res.status(500).json({ error: 'Failed to submit answer' });
+  }
 });
 
 // Create uploads directory

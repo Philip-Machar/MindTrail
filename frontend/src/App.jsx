@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Upload, BookOpen, Trophy, Coins, Flame, CheckCircle, XCircle, Star, Target, Brain } from 'lucide-react';
+import { Upload, BookOpen, Trophy, Coins, Flame, CheckCircle, XCircle, Star, Target, Brain, Timer } from 'lucide-react';
 
 const App = () => {
   // API Configuration
@@ -11,7 +11,13 @@ const App = () => {
   const [error, setError] = useState('');
   const [currentTopic, setCurrentTopic] = useState('');
   const [uploadedFile, setUploadedFile] = useState(null);
-  const [currentExplanation, setCurrentExplanation] = useState('');
+  const [currentParagraph, setCurrentParagraph] = useState(null);
+  const [paragraphNumber, setParagraphNumber] = useState(0);
+  const [totalParagraphs, setTotalParagraphs] = useState(0);
+  const [paragraphsCompleted, setParagraphsCompleted] = useState(false);
+  const [userQuestion, setUserQuestion] = useState('');
+  const [questionAnswer, setQuestionAnswer] = useState('');
+  const [showQuestionAnswer, setShowQuestionAnswer] = useState(false);
   const [currentQuestion, setCurrentQuestion] = useState(null);
   const [selectedAnswer, setSelectedAnswer] = useState('');
   const [showFeedback, setShowFeedback] = useState(false);
@@ -23,9 +29,22 @@ const App = () => {
   const [isLearning, setIsLearning] = useState(false);
   const [currentFeedback, setCurrentFeedback] = useState(null);
   const [keyTakeaways, setKeyTakeaways] = useState([]);
+  const [showDashboard, setShowDashboard] = useState(false);
+  const [completedTopics, setCompletedTopics] = useState([]);
+  const [leaderboard, setLeaderboard] = useState([]);
+  const [showDailyChallenge, setShowDailyChallenge] = useState(false);
+  const [dailyChallengeId, setDailyChallengeId] = useState(null);
+  const [dailyTimeMs, setDailyTimeMs] = useState(0);
+  const [dailyQuestion, setDailyQuestion] = useState(null);
+  const [dailySelected, setDailySelected] = useState('');
+  const [dailyScore, setDailyScore] = useState(0);
+  const [dailyCompleted, setDailyCompleted] = useState(false);
+  const [dailyPreparedId, setDailyPreparedId] = useState(null);
+  const [dailyPreview, setDailyPreview] = useState(null);
 
   useEffect(() => {
     fetchUserStats();
+    prepareDailyChallenge();
   }, []);
 
   const fetchUserStats = async () => {
@@ -36,10 +55,138 @@ const App = () => {
         setCoins(stats.coins);
         setStreak(stats.streak);
         setBadges(stats.badges || []);
+        setCompletedTopics(stats.completedTopics || []);
       }
     } catch (error) {
       console.error('Error fetching user stats:', error);
     }
+  };
+
+  const fetchLeaderboard = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/leaderboard`);
+      if (response.ok) {
+        const data = await response.json();
+        setLeaderboard(data.leaderboard || []);
+      }
+    } catch (error) {
+      console.error('Error fetching leaderboard:', error);
+    }
+  };
+
+  // Daily Challenge API helpers
+  const prepareDailyChallenge = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/daily-challenge/prepare`, { method: 'POST' });
+      const data = await response.json();
+      if (response.ok) {
+        setDailyPreparedId(data.preparedId);
+        setDailyPreview(data.preview || null);
+      }
+    } catch (e) {
+      // silent fail; fallback path will still work
+      console.warn('Daily prepare failed:', e);
+    }
+  };
+
+  const startDailyChallenge = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/daily-challenge/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ preparedId: dailyPreparedId || undefined })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Failed to start');
+      setDailyChallengeId(data.challengeId);
+      setDailyTimeMs(data.timeRemainingMs);
+      setDailyScore(0);
+      setDailyCompleted(false);
+      setDailySelected('');
+      setShowDailyChallenge(true);
+      if (data.firstQuestion) {
+        setDailyQuestion({
+          question: data.firstQuestion.q,
+          options: data.firstQuestion.options,
+          questionNumber: data.firstQuestion.questionNumber
+        });
+      } else {
+        await fetchDailyQuestion(data.challengeId);
+      }
+    } catch (e) {
+      setError(e.message);
+    }
+  };
+
+  const fetchDailyQuestion = async (id) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/daily-challenge/${id}/question`);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Failed to fetch question');
+      setDailyTimeMs(data.timeRemainingMs || 0);
+      setDailyScore(data.score || 0);
+      if (data.completed) {
+        setDailyCompleted(true);
+        setDailyQuestion(null);
+      } else {
+        setDailyQuestion({
+          question: data.question,
+          options: data.options,
+          questionNumber: data.questionNumber
+        });
+      }
+    } catch (e) {
+      setError(e.message);
+    }
+  };
+
+  const submitDailyAnswer = async () => {
+    if (!dailyChallengeId || dailySelected === '') return;
+    try {
+      const response = await fetch(`${API_BASE_URL}/daily-challenge/${dailyChallengeId}/answer`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ selectedAnswer: dailySelected })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Failed to submit');
+      setCoins(data.userStats?.coins ?? coins);
+      setDailyScore(data.score || 0);
+      setDailyCompleted(!!data.completed);
+      setDailySelected('');
+      setDailyTimeMs(data.timeRemainingMs || 0);
+      if (!data.completed) {
+        await fetchDailyQuestion(dailyChallengeId);
+      } else {
+        setDailyQuestion(null);
+      }
+    } catch (e) {
+      setError(e.message);
+    }
+  };
+
+  // Countdown timer for daily challenge
+  useEffect(() => {
+    if (!showDailyChallenge || dailyCompleted) return;
+    if (dailyTimeMs <= 0) {
+      setDailyCompleted(true);
+      return;
+    }
+    const interval = setInterval(() => {
+      setDailyTimeMs((ms) => Math.max(0, ms - 100));
+    }, 100);
+    return () => clearInterval(interval);
+  }, [showDailyChallenge, dailyCompleted, dailyTimeMs]);
+
+  const showDashboardView = () => {
+    setShowDashboard(true);
+    setIsLearning(false);
+    fetchLeaderboard();
+  };
+
+  const showLearningView = () => {
+    setShowDashboard(false);
+    setIsLearning(false);
   };
 
   const handleStartLearning = async () => {
@@ -69,17 +216,91 @@ const App = () => {
 
       if (response.ok) {
         setSessionId(data.sessionId);
-        setCurrentExplanation(data.explanation);
+        setCurrentParagraph(data.currentParagraph);
+        setParagraphNumber(data.paragraphNumber);
+        setTotalParagraphs(data.totalParagraphs);
+        setParagraphsCompleted(false);
         setKeyTakeaways(data.keyTakeaways || []);
         setIsLearning(true);
         setProgress(0);
-        
-        await getNextQuestion(data.sessionId);
+        setUserQuestion('');
+        setQuestionAnswer('');
+        setShowQuestionAnswer(false);
       } else {
         setError(data.error || 'Failed to process learning content');
       }
     } catch (error) {
       setError('Network error. Please check that the backend server is running on port 3001.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const submitUserQuestion = async () => {
+    if (!userQuestion.trim() || !sessionId) return;
+
+    setIsLoading(true);
+    setError('');
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/learning/${sessionId}/question`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          userQuestion: userQuestion
+        })
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setQuestionAnswer(data.answer);
+        setShowQuestionAnswer(true);
+        setUserQuestion('');
+      } else {
+        setError(data.error || 'Failed to get answer');
+      }
+    } catch (error) {
+      setError('Network error. Please check that the backend server is running.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const moveToNextParagraph = async () => {
+    if (!sessionId) return;
+
+    setIsLoading(true);
+    setError('');
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/learning/${sessionId}/next-paragraph`, {
+        method: 'POST'
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        if (data.paragraphsCompleted) {
+          setParagraphsCompleted(true);
+          setProgress(100);
+          // Start quiz after paragraphs are completed
+          await getNextQuestion(sessionId);
+        } else {
+          setCurrentParagraph(data.nextParagraph);
+          setParagraphNumber(data.paragraphNumber);
+          setProgress(data.progress);
+          setUserQuestion('');
+          setQuestionAnswer('');
+          setShowQuestionAnswer(false);
+        }
+      } else {
+        setError(data.error || 'Failed to move to next paragraph');
+      }
+    } catch (error) {
+      setError('Network error. Please check that the backend server is running.');
     } finally {
       setIsLoading(false);
     }
@@ -173,7 +394,13 @@ const App = () => {
     setIsLearning(false);
     setCurrentTopic('');
     setUploadedFile(null);
-    setCurrentExplanation('');
+    setCurrentParagraph(null);
+    setParagraphNumber(0);
+    setTotalParagraphs(0);
+    setParagraphsCompleted(false);
+    setUserQuestion('');
+    setQuestionAnswer('');
+    setShowQuestionAnswer(false);
     setCurrentQuestion(null);
     setProgress(0);
     setSessionId(null);
@@ -214,7 +441,7 @@ const App = () => {
               <Brain className="w-6 h-6 text-purple-900" />
             </div>
             <div>
-              <h1 className="text-2xl font-black text-yellow-300">MindTrail</h1>
+              <h1 className="text-2xl font-black text-yellow-300">EduQuest</h1>
               <div className="text-xs text-purple-200">Learning Quest</div>
             </div>
           </div>
@@ -228,13 +455,275 @@ const App = () => {
               <Coins className="w-4 h-4 text-white" />
               <span className="text-white font-bold">{coins}</span>
             </div>
-            <div className="text-purple-200 text-sm">Demo Mode</div>
+            <button
+              onClick={showDashboardView}
+              className="bg-purple-500/80 px-4 py-2 rounded-full text-white font-bold hover:bg-purple-400/80 transition-all flex items-center space-x-2"
+            >
+              <Trophy className="w-4 h-4" />
+              <span>Dashboard</span>
+            </button>
+            <button
+              onClick={startDailyChallenge}
+              className="bg-pink-500/80 px-4 py-2 rounded-full text-white font-bold hover:bg-pink-400/80 transition-all flex items-center space-x-2"
+            >
+              <Timer className="w-4 h-4" />
+              <span>Daily</span>
+            </button>
+            <button
+              onClick={showLearningView}
+              className="bg-green-500/80 px-4 py-2 rounded-full text-white font-bold hover:bg-green-400/80 transition-all flex items-center space-x-2"
+            >
+              <BookOpen className="w-4 h-4" />
+              <span>Learn</span>
+            </button>
           </div>
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto p-6">
-        {!isLearning ? (
+      <main className="max-w-6xl mx-auto p-6">
+        {showDailyChallenge ? (
+          /* Daily Challenge View */
+          <div className="space-y-6">
+            <div className="bg-black/30 backdrop-blur-sm border border-pink-500/30 rounded-2xl p-6">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <div className="w-10 h-10 bg-pink-500 rounded-full flex items-center justify-center">
+                    <Timer className="w-5 h-5 text-white" />
+                  </div>
+                  <h3 className="text-xl font-bold text-pink-300">Daily Challenge</h3>
+                </div>
+                <div className="bg-yellow-500/80 px-3 py-1 rounded-full text-white font-bold text-sm flex items-center space-x-2">
+                  <Coins className="w-4 h-4" />
+                  <span>+10 per correct</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-black/30 backdrop-blur-sm border border-pink-500/30 rounded-2xl p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="text-pink-200 font-bold">Score: {dailyScore}</div>
+                <div className="flex items-center space-x-2 bg-pink-500/20 border border-pink-400/40 px-3 py-1 rounded-full">
+                  <Timer className="w-4 h-4 text-pink-300" />
+                  <span className="text-pink-200 font-bold">{(dailyTimeMs/1000).toFixed(1)}s</span>
+                </div>
+              </div>
+
+              {dailyCompleted ? (
+                <div className="text-center space-y-4">
+                  <h4 className="text-2xl font-black text-pink-300">Time's up!</h4>
+                  <p className="text-pink-100">You answered {dailyScore} correctly.</p>
+                  <button
+                    onClick={() => { setShowDailyChallenge(false); setDailyChallengeId(null); }}
+                    className="bg-gradient-to-r from-purple-500 to-pink-500 text-white px-8 py-3 rounded-xl font-bold hover:from-purple-400 hover:to-pink-400 transition-all"
+                  >
+                    Back to Home
+                  </button>
+                </div>
+              ) : dailyQuestion ? (
+                <div className="space-y-6">
+                  <div>
+                    <div className="text-sm text-pink-200 mb-1">Q{dailyQuestion.questionNumber}</div>
+                    <h4 className="text-lg font-semibold text-white">{dailyQuestion.question}</h4>
+                  </div>
+                  <div className="space-y-3">
+                    {dailyQuestion.options.map((opt, idx) => (
+                      <label key={idx} className="flex items-center space-x-3 p-4 bg-white/5 border border-pink-400/30 rounded-xl hover:bg-white/10 cursor-pointer transition-all">
+                        <input
+                          type="radio"
+                          name="daily-answer"
+                          value={idx}
+                          checked={dailySelected === idx.toString()}
+                          onChange={(e) => setDailySelected(e.target.value)}
+                          className="text-pink-500"
+                        />
+                        <span className="text-white">{opt}</span>
+                      </label>
+                    ))}
+                  </div>
+                  <button
+                    onClick={submitDailyAnswer}
+                    disabled={dailySelected === ''}
+                    className="w-full bg-gradient-to-r from-pink-500 to-purple-500 text-white py-3 rounded-xl font-bold hover:from-pink-400 hover:to-purple-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Submit & Next
+                  </button>
+                </div>
+              ) : (
+                <div className="text-center text-pink-200">Loading question...</div>
+              )}
+            </div>
+          </div>
+        ) : showDashboard ? (
+          /* Dashboard View */
+          <div className="space-y-6">
+            {/* Welcome Section */}
+            <div className="bg-black/30 backdrop-blur-sm border border-purple-500/30 rounded-2xl p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-3xl font-black text-yellow-300 mb-2">Your Learning Journey</h2>
+                  <p className="text-purple-200">Track your progress, achievements, and consistency</p>
+                </div>
+                <div className="text-right">
+                  <div className="text-2xl font-bold text-yellow-300">{coins}</div>
+                  <div className="text-sm text-purple-200">Total Coins</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Stats Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {/* Streak Card */}
+              <div className="bg-black/30 backdrop-blur-sm border border-red-500/30 rounded-2xl p-6">
+                <div className="flex items-center space-x-3 mb-4">
+                  <div className="w-12 h-12 bg-red-500 rounded-full flex items-center justify-center">
+                    <Flame className="w-6 h-6 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-red-300">Learning Streak</h3>
+                    <p className="text-red-200">Days of consistent learning</p>
+                  </div>
+                </div>
+                <div className="text-3xl font-black text-red-300 mb-2">{streak}</div>
+                <div className="w-full bg-gray-700 rounded-full h-3">
+                  <div 
+                    className="bg-gradient-to-r from-red-400 to-orange-400 h-3 rounded-full transition-all duration-500"
+                    style={{ width: `${Math.min(streak * 10, 100)}%` }}
+                  ></div>
+                </div>
+                <p className="text-sm text-red-200 mt-2">Keep the momentum going!</p>
+              </div>
+
+              {/* Topics Completed */}
+              <div className="bg-black/30 backdrop-blur-sm border border-green-500/30 rounded-2xl p-6">
+                <div className="flex items-center space-x-3 mb-4">
+                  <div className="w-12 h-12 bg-green-500 rounded-full flex items-center justify-center">
+                    <BookOpen className="w-6 h-6 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-green-300">Topics Mastered</h3>
+                    <p className="text-green-200">Knowledge areas completed</p>
+                  </div>
+                </div>
+                <div className="text-3xl font-black text-green-300 mb-2">{completedTopics.length}</div>
+                <div className="space-y-2">
+                  {completedTopics.slice(0, 3).map((topic, index) => (
+                    <div key={index} className="text-sm text-green-200 bg-green-500/20 px-3 py-1 rounded-full">
+                      {topic.name}
+                    </div>
+                  ))}
+                  {completedTopics.length > 3 && (
+                    <div className="text-sm text-green-300">+{completedTopics.length - 3} more</div>
+                  )}
+                </div>
+              </div>
+
+              {/* Trophies */}
+              <div className="bg-black/30 backdrop-blur-sm border border-yellow-500/30 rounded-2xl p-6">
+                <div className="flex items-center space-x-3 mb-4">
+                  <div className="w-12 h-12 bg-yellow-500 rounded-full flex items-center justify-center">
+                    <Trophy className="w-6 h-6 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-yellow-300">Achievements</h3>
+                    <p className="text-yellow-200">Badges and trophies earned</p>
+                  </div>
+                </div>
+                <div className="text-3xl font-black text-yellow-300 mb-2">{badges.filter(b => b.earned).length}</div>
+                <div className="flex flex-wrap gap-2">
+                  {badges.filter(b => b.earned).slice(0, 4).map((badge, index) => (
+                    <div key={index} className="text-2xl">{badge.icon}</div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Leaderboard */}
+            <div className="bg-black/30 backdrop-blur-sm border border-blue-500/30 rounded-2xl p-6">
+              <div className="flex items-center space-x-3 mb-6">
+                <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center">
+                  <Star className="w-5 h-5 text-white" />
+                </div>
+                <h3 className="text-xl font-bold text-blue-300">Leaderboard</h3>
+              </div>
+              
+              <div className="space-y-3">
+                {leaderboard.length > 0 ? (
+                  leaderboard.map((user, index) => (
+                    <div key={index} className={`flex items-center justify-between p-4 rounded-xl ${
+                      index === 0 ? 'bg-yellow-500/20 border border-yellow-400/50' :
+                      index === 1 ? 'bg-gray-400/20 border border-gray-400/50' :
+                      index === 2 ? 'bg-orange-500/20 border border-orange-400/50' :
+                      'bg-white/5 border border-gray-600/50'
+                    }`}>
+                      <div className="flex items-center space-x-4">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${
+                          index === 0 ? 'bg-yellow-500 text-black' :
+                          index === 1 ? 'bg-gray-400 text-white' :
+                          index === 2 ? 'bg-orange-500 text-white' :
+                          'bg-gray-600 text-white'
+                        }`}>
+                          {index + 1}
+                        </div>
+                        <div>
+                          <div className="font-bold text-white">{user.name || `Player ${index + 1}`}</div>
+                          <div className="text-sm text-gray-300">{user.topicsCompleted || 0} topics completed</div>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="font-bold text-yellow-300">{user.coins || 0}</div>
+                        <div className="text-sm text-gray-300">coins</div>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-center py-8 text-gray-400">
+                    <Trophy className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                    <p>No leaderboard data available yet</p>
+                    <p className="text-sm">Complete some topics to see your ranking!</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Recent Activity */}
+            <div className="bg-black/30 backdrop-blur-sm border border-purple-500/30 rounded-2xl p-6">
+              <div className="flex items-center space-x-3 mb-6">
+                <div className="w-10 h-10 bg-purple-500 rounded-full flex items-center justify-center">
+                  <Brain className="w-5 h-5 text-white" />
+                </div>
+                <h3 className="text-xl font-bold text-purple-300">Recent Activity</h3>
+              </div>
+              
+              <div className="space-y-4">
+                {completedTopics.slice(0, 5).map((topic, index) => (
+                  <div key={index} className="flex items-center justify-between p-4 bg-white/5 rounded-xl">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
+                        <CheckCircle className="w-4 h-4 text-white" />
+                      </div>
+                      <div>
+                        <div className="font-bold text-white">{topic.name}</div>
+                        <div className="text-sm text-gray-300">Completed {topic.completedAt}</div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="font-bold text-green-300">+{topic.coinsEarned || 50}</div>
+                      <div className="text-sm text-gray-300">coins</div>
+                    </div>
+                  </div>
+                ))}
+                
+                {completedTopics.length === 0 && (
+                  <div className="text-center py-8 text-gray-400">
+                    <BookOpen className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                    <p>No completed topics yet</p>
+                    <p className="text-sm">Start learning to see your activity here!</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : !isLearning ? (
           /* Start Screen */
           <div className="bg-black/30 backdrop-blur-sm border border-purple-500/30 rounded-2xl p-8 shadow-2xl">
             <div className="text-center mb-8">
@@ -334,19 +823,93 @@ const App = () => {
               </div>
             </div>
 
-            {/* Explanation */}
-            <div className="bg-black/30 backdrop-blur-sm border border-blue-500/30 rounded-2xl p-6">
-              <div className="flex items-center space-x-3 mb-4">
-                <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center">
-                  <BookOpen className="w-5 h-5 text-white" />
+            {/* Paragraph Learning */}
+            {!paragraphsCompleted && currentParagraph && (
+              <div className="bg-black/30 backdrop-blur-sm border border-blue-500/30 rounded-2xl p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center">
+                      <BookOpen className="w-5 h-5 text-white" />
+                    </div>
+                    <h3 className="text-xl font-bold text-blue-300">Learning Journey</h3>
+                  </div>
+                  <div className="bg-blue-500/80 px-3 py-1 rounded-full text-white font-bold text-sm">
+                    {paragraphNumber}/{totalParagraphs}
+                  </div>
                 </div>
-                <h3 className="text-xl font-bold text-blue-300">Knowledge Crystal</h3>
+                
+                <div className="mb-6">
+                  <h4 className="text-lg font-semibold text-blue-200 mb-3">{currentParagraph.title}</h4>
+                  <p className="text-lg text-blue-100 leading-relaxed">{currentParagraph.content}</p>
+                </div>
+
+                {/* User Question Section */}
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-blue-200 font-bold mb-2">
+                      Do you have any questions about this paragraph?
+                    </label>
+                    <div className="flex space-x-3">
+                      <input
+                        type="text"
+                        value={userQuestion}
+                        onChange={(e) => setUserQuestion(e.target.value)}
+                        placeholder="Ask anything you'd like to understand better..."
+                        className="flex-1 p-3 bg-white/10 border border-blue-400/30 rounded-xl text-white placeholder-blue-300 focus:ring-2 focus:ring-blue-400 focus:border-blue-400"
+                        disabled={isLoading}
+                      />
+                      <button
+                        onClick={submitUserQuestion}
+                        disabled={!userQuestion.trim() || isLoading}
+                        className="bg-gradient-to-r from-blue-500 to-purple-500 text-white px-6 py-3 rounded-xl font-bold hover:from-blue-400 hover:to-purple-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {isLoading ? 'Asking...' : 'Ask'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Question Answer */}
+                  {showQuestionAnswer && questionAnswer && (
+                    <div className="bg-green-500/20 border border-green-400/50 rounded-xl p-4">
+                      <div className="flex items-center space-x-2 mb-2">
+                        <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
+                          <span className="text-white text-sm">💡</span>
+                        </div>
+                        <h4 className="font-bold text-green-300">Answer:</h4>
+                      </div>
+                      <p className="text-green-100">{questionAnswer}</p>
+                    </div>
+                  )}
+
+                  {/* Next Paragraph Button */}
+                  <div className="flex justify-end">
+                    <button
+                      onClick={moveToNextParagraph}
+                      disabled={isLoading}
+                      className="bg-gradient-to-r from-green-500 to-blue-500 text-white px-8 py-3 rounded-xl font-bold hover:from-green-400 hover:to-blue-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isLoading ? 'Loading...' : paragraphNumber === totalParagraphs ? 'Start Quiz!' : 'Next Paragraph'}
+                    </button>
+                  </div>
+                </div>
               </div>
-              <p className="text-lg text-blue-100 leading-relaxed whitespace-pre-wrap">{currentExplanation}</p>
-            </div>
+            )}
+
+            {/* Quiz Section - Only show after paragraphs are completed */}
+            {paragraphsCompleted && (
+              <div className="bg-black/30 backdrop-blur-sm border border-green-500/30 rounded-2xl p-6">
+                <div className="flex items-center space-x-3 mb-4">
+                  <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center">
+                    <Target className="w-5 h-5 text-white" />
+                  </div>
+                  <h3 className="text-xl font-bold text-green-300">Quiz Time!</h3>
+                </div>
+                <p className="text-green-100 mb-6">Now let's test your understanding with some questions.</p>
+              </div>
+            )}
 
             {/* Quiz */}
-            {currentQuestion && (
+            {paragraphsCompleted && currentQuestion && (
               <div className="bg-black/30 backdrop-blur-sm border border-orange-500/30 rounded-2xl p-6">
                 <div className="flex items-center justify-between mb-6">
                   <div className="flex items-center space-x-3">
