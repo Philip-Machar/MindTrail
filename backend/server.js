@@ -20,19 +20,21 @@ const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
 // Middleware
 app.use(cors({
-  origin: ['http://localhost:3000', 'http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175'], // React and Vite ports
+  origin: [
+    'http://localhost:3000', 
+    'http://localhost:5173', 
+    'http://localhost:5174', 
+    'http://localhost:5175',
+    'https://mindtrail.vercel.app',
+    'https://mindtrail-frontend.vercel.app'
+  ], // React and Vite ports + Vercel domains
   credentials: true
 }));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Configure multer for file uploads
-const storage = multer.diskStorage({
-  destination: './uploads/',
-  filename: (req, file, cb) => {
-    cb(null, Date.now() + '-' + file.originalname);
-  }
-});
+// Configure multer for file uploads (use memory storage for Vercel)
+const storage = multer.memoryStorage();
 
 const upload = multer({
   storage: storage,
@@ -151,20 +153,18 @@ const generateEncouragingMessage = (isCorrect, streak = 0) => {
   }
 };
 
-const extractTextFromPDF = async (filePath) => {
+const extractTextFromPDFBuffer = async (buffer) => {
   try {
-    const dataBuffer = await fs.readFile(filePath);
-    const data = await pdf(dataBuffer);
+    const data = await pdf(buffer);
     return data.text;
   } catch (error) {
     throw new Error('Failed to extract text from PDF');
   }
 };
 
-const extractTextFromImage = async (filePath) => {
+const extractTextFromImageBuffer = async (buffer, mimeType) => {
   try {
-    const imageBuffer = await fs.readFile(filePath);
-    const base64Image = imageBuffer.toString('base64');
+    const base64Image = buffer.toString('base64');
     
     const prompt = `Extract all text content from this image. If it contains educational material, notes, or any readable text, please transcribe it accurately. If it's handwritten, do your best to interpret it clearly.`;
     
@@ -173,7 +173,7 @@ const extractTextFromImage = async (filePath) => {
       {
         inlineData: {
           data: base64Image,
-          mimeType: path.extname(filePath) === '.png' ? 'image/png' : 'image/jpeg'
+          mimeType: mimeType
         }
       }
     ]);
@@ -349,23 +349,19 @@ app.post('/api/learning/process', upload.single('file'), async (req, res) => {
     // Process uploaded file if provided
     if (file) {
       try {
-        console.log(`Processing file: ${file.filename}, type: ${file.mimetype}`);
+        console.log(`Processing file: ${file.originalname}, type: ${file.mimetype}`);
         
         if (file.mimetype === 'application/pdf') {
-          extractedText = await extractTextFromPDF(file.path);
+          extractedText = await extractTextFromPDFBuffer(file.buffer);
         } else if (file.mimetype === 'text/plain') {
-          extractedText = await fs.readFile(file.path, 'utf8');
+          extractedText = file.buffer.toString('utf8');
         } else if (file.mimetype.startsWith('image/')) {
-          extractedText = await extractTextFromImage(file.path);
+          extractedText = await extractTextFromImageBuffer(file.buffer, file.mimetype);
         }
         
         console.log(`Extracted text length: ${extractedText.length}`);
-        
-        // Clean up uploaded file
-        await fs.unlink(file.path);
       } catch (fileError) {
         console.error('File processing error:', fileError);
-        if (file.path) await fs.unlink(file.path).catch(() => {});
         return res.status(400).json({ error: 'Failed to process uploaded file: ' + fileError.message });
       }
     }
@@ -1016,8 +1012,9 @@ app.post('/api/tts/generate', async (req, res) => {
   }
 });
 
-// Create uploads directory
+// Create uploads directory (skip for Vercel)
 const createUploadsDir = async () => {
+  if (process.env.VERCEL) return; // Skip for Vercel deployment
   try {
     await fs.access('./uploads');
   } catch {
@@ -1046,11 +1043,14 @@ const startServer = async () => {
     console.log(`🔑 Gemini API: ${process.env.GEMINI_API_KEY ? '✅ Connected' : '❌ Not configured'}`);
     console.log(`🎤 ElevenLabs TTS: ${process.env.ELEVENLABS_API_KEY ? '✅ Connected' : '❌ Not configured'}`);
     console.log(`📁 Upload directory: ./uploads/`);
-    console.log(`🌐 CORS enabled for: http://localhost:3000`);
+    console.log(`🌐 CORS enabled for: http://localhost:3000, https://mindtrail.vercel.app`);
   });
 };
 
-startServer().catch(console.error);
+// Only start server if not in Vercel environment
+if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
+  startServer().catch(console.error);
+}
 
-// Export for testing
+// Export for Vercel
 module.exports = app;
