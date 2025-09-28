@@ -4,7 +4,7 @@ import { Upload, BookOpen, Trophy, Coins, Flame, CheckCircle, XCircle, Star, Tar
 const App = () => {
   // API Configuration
   const API_BASE_URL = process.env.NODE_ENV === 'production' 
-    ? 'https://mindtrail-backend.vercel.app/api'
+    ? 'https://eduquest-backend.vercel.app/api'
     : 'http://localhost:3001/api';
   
   // State management

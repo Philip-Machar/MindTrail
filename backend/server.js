@@ -1043,7 +1043,7 @@ const startServer = async () => {
     console.log(`🔑 Gemini API: ${process.env.GEMINI_API_KEY ? '✅ Connected' : '❌ Not configured'}`);
     console.log(`🎤 ElevenLabs TTS: ${process.env.ELEVENLABS_API_KEY ? '✅ Connected' : '❌ Not configured'}`);
     console.log(`📁 Upload directory: ./uploads/`);
-    console.log(`🌐 CORS enabled for: http://localhost:3000, https://mindtrail.vercel.app`);
+    console.log(`🌐 CORS enabled for: http://localhost:3000, https://eduquest.vercel.app`);
   });
 };
 
