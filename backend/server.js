@@ -26,7 +26,7 @@ app.use(cors({
     'http://localhost:5174', 
     'http://localhost:5175',
     'https://eduquest.vercel.app',
-    'https://eduquest-frontend.vercel.app'
+    'https://eduquest-frontend-phi.vercel.app/'
   ], // React and Vite ports + Vercel domains
   credentials: true
 }));
