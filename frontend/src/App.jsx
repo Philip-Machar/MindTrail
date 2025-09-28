@@ -29,7 +29,7 @@ const App = () => {
   const [isLearning, setIsLearning] = useState(false);
   const [currentFeedback, setCurrentFeedback] = useState(null);
   const [keyTakeaways, setKeyTakeaways] = useState([]);
-  const [showDashboard, setShowDashboard] = useState(false);
+  const [showDashboard, setShowDashboard] = useState(true);
   const [completedTopics, setCompletedTopics] = useState([]);
   const [leaderboard, setLeaderboard] = useState([]);
   const [showDailyChallenge, setShowDailyChallenge] = useState(false);
@@ -41,10 +41,13 @@ const App = () => {
   const [dailyCompleted, setDailyCompleted] = useState(false);
   const [dailyPreparedId, setDailyPreparedId] = useState(null);
   const [dailyPreview, setDailyPreview] = useState(null);
+  const [showRedeemModal, setShowRedeemModal] = useState(false);
+  const [streakHistory, setStreakHistory] = useState([]);
 
   useEffect(() => {
     fetchUserStats();
     prepareDailyChallenge();
+    fetchLeaderboard();
   }, []);
 
   const fetchUserStats = async () => {
@@ -56,6 +59,7 @@ const App = () => {
         setStreak(stats.streak);
         setBadges(stats.badges || []);
         setCompletedTopics(stats.completedTopics || []);
+        setStreakHistory(stats.streakHistory || []);
       }
     } catch (error) {
       console.error('Error fetching user stats:', error);
@@ -155,11 +159,31 @@ const App = () => {
       setDailyCompleted(!!data.completed);
       setDailySelected('');
       setDailyTimeMs(data.timeRemainingMs || 0);
+      fetchLeaderboard(); // Update leaderboard after daily challenge
       if (!data.completed) {
         await fetchDailyQuestion(dailyChallengeId);
       } else {
         setDailyQuestion(null);
       }
+    } catch (e) {
+      setError(e.message);
+    }
+  };
+
+  // Redeem badge for coins
+  const redeemBadge = async (badgeId) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/badges/redeem`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ badgeId })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Failed to redeem');
+      setCoins(data.userStats?.coins ?? coins);
+      setBadges(data.userStats?.badges ?? badges);
+      setShowRedeemModal(false);
+      fetchLeaderboard(); // Update leaderboard after redemption
     } catch (e) {
       setError(e.message);
     }
@@ -356,6 +380,7 @@ const App = () => {
           setCoins(data.userStats.coins);
           setStreak(data.userStats.streak);
           setBadges(data.userStats.badges || []);
+          fetchLeaderboard(); // Update leaderboard after quiz completion
         }
         
         setProgress(data.progress);
@@ -591,6 +616,50 @@ const App = () => {
                   ></div>
                 </div>
                 <p className="text-sm text-red-200 mt-2">Keep the momentum going!</p>
+                
+                {/* Streak Calendar */}
+                <div className="mt-4">
+                  <h4 className="text-sm font-bold text-red-300 mb-2">Recent Activity</h4>
+                  <div className="grid grid-cols-7 gap-1">
+                    {Array.from({ length: 14 }, (_, i) => {
+                      const date = new Date();
+                      date.setDate(date.getDate() - (13 - i));
+                      const dateStr = date.toISOString().split('T')[0];
+                      const isActive = streakHistory.includes(dateStr);
+                      const isToday = dateStr === new Date().toISOString().split('T')[0];
+                      
+                      return (
+                        <div
+                          key={i}
+                          className={`w-6 h-6 rounded text-xs flex items-center justify-center ${
+                            isActive 
+                              ? 'bg-green-500 text-white' 
+                              : isToday 
+                                ? 'bg-gray-500 text-white' 
+                                : 'bg-gray-700 text-gray-400'
+                          }`}
+                          title={date.toLocaleDateString()}
+                        >
+                          {date.getDate()}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="flex items-center space-x-4 mt-2 text-xs">
+                    <div className="flex items-center space-x-1">
+                      <div className="w-3 h-3 bg-green-500 rounded"></div>
+                      <span className="text-green-300">Active</span>
+                    </div>
+                    <div className="flex items-center space-x-1">
+                      <div className="w-3 h-3 bg-gray-500 rounded"></div>
+                      <span className="text-gray-300">Today</span>
+                    </div>
+                    <div className="flex items-center space-x-1">
+                      <div className="w-3 h-3 bg-gray-700 rounded"></div>
+                      <span className="text-gray-400">Inactive</span>
+                    </div>
+                  </div>
+                </div>
               </div>
 
               {/* Topics Completed */}
@@ -619,14 +688,22 @@ const App = () => {
 
               {/* Trophies */}
               <div className="bg-black/30 backdrop-blur-sm border border-yellow-500/30 rounded-2xl p-6">
-                <div className="flex items-center space-x-3 mb-4">
-                  <div className="w-12 h-12 bg-yellow-500 rounded-full flex items-center justify-center">
-                    <Trophy className="w-6 h-6 text-white" />
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-12 h-12 bg-yellow-500 rounded-full flex items-center justify-center">
+                      <Trophy className="w-6 h-6 text-white" />
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-bold text-yellow-300">Achievements</h3>
+                      <p className="text-yellow-200">Badges and trophies earned</p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="text-xl font-bold text-yellow-300">Achievements</h3>
-                    <p className="text-yellow-200">Badges and trophies earned</p>
-                  </div>
+                  <button
+                    onClick={() => setShowRedeemModal(true)}
+                    className="bg-yellow-500/80 px-3 py-1 rounded-full text-white text-sm font-bold hover:bg-yellow-400/80 transition-all"
+                  >
+                    Redeem
+                  </button>
                 </div>
                 <div className="text-3xl font-black text-yellow-300 mb-2">{badges.filter(b => b.earned).length}</div>
                 <div className="flex flex-wrap gap-2">
@@ -1043,6 +1120,9 @@ const App = () => {
                           {new Date(badge.earnedAt).toLocaleDateString()}
                         </div>
                       )}
+                      {badge.earned && badge.redeemed && (
+                        <div className="text-xs text-green-400 mt-1">✓ Redeemed</div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -1051,6 +1131,54 @@ const App = () => {
           </div>
         )}
       </main>
+
+      {/* Redeem Modal */}
+      {showRedeemModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-black/90 border border-yellow-500/30 rounded-2xl p-6 max-w-md w-full mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold text-yellow-300">Redeem Badges</h3>
+              <button
+                onClick={() => setShowRedeemModal(false)}
+                className="text-gray-400 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="space-y-3">
+              {badges.filter(b => b.earned && !b.redeemed).map((badge) => (
+                <div key={badge.id} className="flex items-center justify-between p-3 bg-white/5 rounded-xl">
+                  <div className="flex items-center space-x-3">
+                    <div className="text-2xl">{badge.icon}</div>
+                    <div>
+                      <div className="text-white font-medium">{badge.name}</div>
+                      <div className="text-sm text-gray-300">
+                        {badge.name.includes('Master') ? '100 coins' : 
+                         badge.name.includes('Streak') ? '75 coins' : 
+                         badge.name.includes('First') ? '25 coins' : '50 coins'}
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => redeemBadge(badge.id)}
+                    className="bg-yellow-500/80 px-4 py-2 rounded-lg text-white font-bold hover:bg-yellow-400/80 transition-all"
+                  >
+                    Redeem
+                  </button>
+                </div>
+              ))}
+              
+              {badges.filter(b => b.earned && !b.redeemed).length === 0 && (
+                <div className="text-center py-4 text-gray-400">
+                  <Trophy className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                  <p>No badges available for redemption</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

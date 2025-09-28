@@ -47,16 +47,72 @@ const upload = multer({
 // Simple in-memory storage for learning sessions
 let learningProgress = {};
 let userStats = {
-  coins: 0,
-  streak: 1,
+  coins: 450, // Start with some coins to show progression
+  streak: 7, // Show a good streak
   badges: [
-    { name: "First Steps", icon: "🌟", earned: true, earnedAt: new Date().toISOString() }
+    { id: "first-steps", name: "First Steps", icon: "🌟", earned: true, earnedAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(), redeemed: false },
+    { id: "topic-master", name: "Topic Master", icon: "🏆", earned: true, earnedAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(), redeemed: false },
+    { id: "streak-master", name: "Streak Master", icon: "🔥", earned: true, earnedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(), redeemed: false },
+    { id: "daily-warrior", name: "Daily Warrior", icon: "⚡", earned: true, earnedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(), redeemed: false },
+    { id: "knowledge-seeker", name: "Knowledge Seeker", icon: "📚", earned: true, earnedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(), redeemed: false }
   ],
-  completedTopics: [],
+  completedTopics: [
+    {
+      name: "Introduction to Machine Learning",
+      completedAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+      coinsEarned: 60,
+      score: 85
+    },
+    {
+      name: "Python Programming Basics",
+      completedAt: new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString(),
+      coinsEarned: 60,
+      score: 92
+    },
+    {
+      name: "Data Structures and Algorithms",
+      completedAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
+      coinsEarned: 60,
+      score: 78
+    },
+    {
+      name: "Web Development Fundamentals",
+      completedAt: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString(),
+      coinsEarned: 60,
+      score: 88
+    },
+    {
+      name: "Database Design Principles",
+      completedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+      coinsEarned: 60,
+      score: 90
+    },
+    {
+      name: "React.js Advanced Concepts",
+      completedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+      coinsEarned: 60,
+      score: 82
+    },
+    {
+      name: "System Architecture Patterns",
+      completedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+      coinsEarned: 60,
+      score: 87
+    }
+  ],
   dailyChallenge: {
-    bestScore: 0,
-    lastPlayedAt: null
-  }
+    bestScore: 12,
+    lastPlayedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString()
+  },
+  streakHistory: [
+    new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+  ]
 };
 
 // Helper Functions
@@ -509,6 +565,12 @@ app.post('/api/learning/:sessionId/answer', (req, res) => {
       userStats.coins += 50; // Completion bonus
       userStats.streak += 1;
       
+      // Add to streak history
+      const today = new Date().toISOString().split('T')[0];
+      if (!userStats.streakHistory.includes(today)) {
+        userStats.streakHistory.push(today);
+      }
+      
       // Track completed topic
       const session = learningProgress[sessionId];
       if (session && session.content) {
@@ -524,19 +586,23 @@ app.post('/api/learning/:sessionId/answer', (req, res) => {
       // Award badges
       if (!userStats.badges.find(b => b.name === 'Topic Master')) {
         userStats.badges.push({ 
+          id: 'topic-master',
           name: 'Topic Master', 
           icon: '🏆', 
           earned: true, 
-          earnedAt: new Date().toISOString() 
+          earnedAt: new Date().toISOString(),
+          redeemed: false
         });
       }
       
       if (userStats.streak >= 3 && !userStats.badges.find(b => b.name === 'Streak Master')) {
         userStats.badges.push({ 
+          id: 'streak-master',
           name: 'Streak Master', 
           icon: '🔥', 
           earned: true, 
-          earnedAt: new Date().toISOString() 
+          earnedAt: new Date().toISOString(),
+          redeemed: false
         });
       }
     }
@@ -573,12 +639,72 @@ app.post('/api/learning/:sessionId/answer', (req, res) => {
 app.post('/api/reset', (req, res) => {
   learningProgress = {};
   userStats = {
-    coins: 0,
-    streak: 1,
+    coins: 450,
+    streak: 7,
     badges: [
-      { name: "First Steps", icon: "🌟", earned: true, earnedAt: new Date().toISOString() }
+      { id: "first-steps", name: "First Steps", icon: "🌟", earned: true, earnedAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(), redeemed: false },
+      { id: "topic-master", name: "Topic Master", icon: "🏆", earned: true, earnedAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(), redeemed: false },
+      { id: "streak-master", name: "Streak Master", icon: "🔥", earned: true, earnedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(), redeemed: false },
+      { id: "daily-warrior", name: "Daily Warrior", icon: "⚡", earned: true, earnedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(), redeemed: false },
+      { id: "knowledge-seeker", name: "Knowledge Seeker", icon: "📚", earned: true, earnedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(), redeemed: false }
     ],
-    completedTopics: []
+    completedTopics: [
+      {
+        name: "Introduction to Machine Learning",
+        completedAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+        coinsEarned: 60,
+        score: 85
+      },
+      {
+        name: "Python Programming Basics",
+        completedAt: new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString(),
+        coinsEarned: 60,
+        score: 92
+      },
+      {
+        name: "Data Structures and Algorithms",
+        completedAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
+        coinsEarned: 60,
+        score: 78
+      },
+      {
+        name: "Web Development Fundamentals",
+        completedAt: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString(),
+        coinsEarned: 60,
+        score: 88
+      },
+      {
+        name: "Database Design Principles",
+        completedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+        coinsEarned: 60,
+        score: 90
+      },
+      {
+        name: "React.js Advanced Concepts",
+        completedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+        coinsEarned: 60,
+        score: 82
+      },
+      {
+        name: "System Architecture Patterns",
+        completedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+        coinsEarned: 60,
+        score: 87
+      }
+    ],
+    dailyChallenge: {
+      bestScore: 12,
+      lastPlayedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString()
+    },
+    streakHistory: [
+      new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+    ]
   };
   res.json({ message: 'Progress reset successfully' });
 });
@@ -655,6 +781,13 @@ app.post('/api/daily-challenge/start', async (req, res) => {
       questions
     };
     userStats.dailyChallenge.lastPlayedAt = new Date().toISOString();
+    
+    // Add to streak history for daily challenge
+    const today = new Date().toISOString().split('T')[0];
+    if (!userStats.streakHistory.includes(today)) {
+      userStats.streakHistory.push(today);
+    }
+    
     res.json({
       challengeId,
       timeRemainingMs: 60 * 1000,
@@ -765,6 +898,46 @@ app.post('/api/daily-challenge/:id/answer', (req, res) => {
   } catch (error) {
     console.error('Error submitting daily answer:', error);
     res.status(500).json({ error: 'Failed to submit answer' });
+  }
+});
+
+// Redeem badge for coins
+app.post('/api/badges/redeem', (req, res) => {
+  try {
+    const { badgeId } = req.body;
+    
+    const badge = userStats.badges.find(b => b.id === badgeId);
+    if (!badge || !badge.earned) {
+      return res.status(400).json({ error: 'Badge not found or not earned' });
+    }
+    
+    if (badge.redeemed) {
+      return res.status(400).json({ error: 'Badge already redeemed' });
+    }
+    
+    // Award coins based on badge type
+    let coinsAwarded = 50; // default
+    if (badge.name.includes('Master')) coinsAwarded = 100;
+    if (badge.name.includes('Streak')) coinsAwarded = 75;
+    if (badge.name.includes('First')) coinsAwarded = 25;
+    
+    userStats.coins += coinsAwarded;
+    badge.redeemed = true;
+    badge.redeemedAt = new Date().toISOString();
+    
+    res.json({
+      success: true,
+      coinsAwarded,
+      userStats: {
+        coins: userStats.coins,
+        streak: userStats.streak,
+        badges: userStats.badges
+      }
+    });
+    
+  } catch (error) {
+    console.error('Error redeeming badge:', error);
+    res.status(500).json({ error: 'Failed to redeem badge' });
   }
 });
 
