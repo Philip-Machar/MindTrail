@@ -3,7 +3,7 @@ import { Upload, BookOpen, Trophy, Coins, Flame, CheckCircle, XCircle, Star, Tar
 
 const App = () => {
   // API Configuration
-  const API_BASE_URL = process.env.NODE_ENV === 'production' 
+  const API_BASE_URL = import.meta.env.PROD 
     ? 'https://eduquest-woad.vercel.app/api'
     : 'http://localhost:3001/api';
   
