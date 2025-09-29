@@ -47,6 +47,7 @@ const App = () => {
   const [streakHistory, setStreakHistory] = useState([]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentAudio, setCurrentAudio] = useState(null);
+  const [isTtsLoading, setIsTtsLoading] = useState(false);
 
   useEffect(() => {
     fetchUserStats();
@@ -196,6 +197,7 @@ const App = () => {
   // Text-to-Speech functions
   const playTextToSpeech = async (text) => {
     try {
+      setIsTtsLoading(true);
       // Stop current audio if playing
       if (currentAudio) {
         currentAudio.pause();
@@ -231,8 +233,10 @@ const App = () => {
       };
 
       await audio.play();
+      setIsTtsLoading(false);
     } catch (error) {
       setIsPlaying(false);
+      setIsTtsLoading(false);
       setError('Text-to-speech failed: ' + error.message);
     }
   };
@@ -975,11 +979,17 @@ const App = () => {
                   <div className="flex items-center justify-between mb-3">
                     <h4 className="text-lg font-semibold text-blue-200">{currentParagraph.title}</h4>
                     <button
-                      onClick={() => isPlaying ? stopTextToSpeech() : playTextToSpeech(currentParagraph.content)}
-                      className="bg-blue-500/80 hover:bg-blue-400/80 p-2 rounded-full transition-all"
-                      title={isPlaying ? "Stop reading" : "Read aloud"}
+                      onClick={() => {
+                        if (isTtsLoading) return;
+                        return isPlaying ? stopTextToSpeech() : playTextToSpeech(currentParagraph.content);
+                      }}
+                      disabled={isTtsLoading}
+                      className={`bg-blue-500/80 hover:bg-blue-400/80 p-2 rounded-full transition-all ${isTtsLoading ? 'opacity-70 cursor-not-allowed' : ''}`}
+                      title={isTtsLoading ? 'Preparing audio…' : (isPlaying ? "Stop reading" : "Read aloud")}
                     >
-                      {isPlaying ? (
+                      {isTtsLoading ? (
+                        <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full"></div>
+                      ) : isPlaying ? (
                         <VolumeX className="w-4 h-4 text-white" />
                       ) : (
                         <Volume2 className="w-4 h-4 text-white" />
