@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Upload, BookOpen, Trophy, Coins, Flame, CheckCircle, XCircle, Star, Target, Brain, Timer, Volume2, VolumeX } from 'lucide-react';
+import { Upload, BookOpen, Trophy, Coins, Flame, CheckCircle, XCircle, Star, Target, Brain, Timer, Volume2, VolumeX, Sliders } from 'lucide-react';
 
 const App = () => {
   // API Configuration
@@ -48,28 +48,23 @@ const App = () => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentAudio, setCurrentAudio] = useState(null);
   const [isTtsLoading, setIsTtsLoading] = useState(false);
+  const [showReadingPrefs, setShowReadingPrefs] = useState(false);
+  const defaultReadingPrefs = {
+    fontFamily: 'system',
+    fontSize: 18,
+    textColor: '#E0F2FE',
+    backgroundColor: 'transparent',
+    letterSpacing: 0,
+    lineHeight: 1.6,
+    wordSpacing: 0
+  };
+
   const [readingPrefs, setReadingPrefs] = useState(() => {
     try {
       const saved = localStorage.getItem('readingPrefs');
-      return saved ? JSON.parse(saved) : {
-        fontFamily: 'system',
-        fontSize: 18,
-        textColor: '#E0F2FE',
-        backgroundColor: 'transparent',
-        letterSpacing: 0,
-        lineHeight: 1.6,
-        wordSpacing: 0
-      };
+      return saved ? JSON.parse(saved) : defaultReadingPrefs;
     } catch {
-      return {
-        fontFamily: 'system',
-        fontSize: 18,
-        textColor: '#E0F2FE',
-        backgroundColor: 'transparent',
-        letterSpacing: 0,
-        lineHeight: 1.6,
-        wordSpacing: 0
-      };
+      return defaultReadingPrefs;
     }
   });
 
@@ -78,6 +73,10 @@ const App = () => {
       localStorage.setItem('readingPrefs', JSON.stringify(readingPrefs));
     } catch {}
   }, [readingPrefs]);
+
+  // Independent loading states for specific actions
+  const [isAsking, setIsAsking] = useState(false);
+  const [isMovingNext, setIsMovingNext] = useState(false);
 
   useEffect(() => {
     fetchUserStats();
@@ -353,7 +352,7 @@ const App = () => {
   const submitUserQuestion = async () => {
     if (!userQuestion.trim() || !sessionId) return;
 
-    setIsLoading(true);
+    setIsAsking(true);
     setError('');
 
     try {
@@ -379,14 +378,14 @@ const App = () => {
     } catch (error) {
       setError('Network error. Please check that the backend server is running.');
     } finally {
-      setIsLoading(false);
+      setIsAsking(false);
     }
   };
 
   const moveToNextParagraph = async () => {
     if (!sessionId) return;
 
-    setIsLoading(true);
+    setIsMovingNext(true);
     setError('');
 
     try {
@@ -416,7 +415,7 @@ const App = () => {
     } catch (error) {
       setError('Network error. Please check that the backend server is running.');
     } finally {
-      setIsLoading(false);
+      setIsMovingNext(false);
     }
   };
 
@@ -1008,27 +1007,38 @@ const App = () => {
                 <div className="mb-6">
                   <div className="flex items-center justify-between mb-3">
                     <h4 className="text-lg font-semibold text-blue-200">{currentParagraph.title}</h4>
-                    <button
-                      onClick={() => {
-                        if (isTtsLoading) return;
-                        return isPlaying ? stopTextToSpeech() : playTextToSpeech(currentParagraph.content);
-                      }}
-                      disabled={isTtsLoading}
-                      className={`bg-blue-500/80 hover:bg-blue-400/80 p-2 rounded-full transition-all ${isTtsLoading ? 'opacity-70 cursor-not-allowed' : ''}`}
-                      title={isTtsLoading ? 'Preparing audio…' : (isPlaying ? "Stop reading" : "Read aloud")}
-                    >
-                      {isTtsLoading ? (
-                        <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full"></div>
-                      ) : isPlaying ? (
-                        <VolumeX className="w-4 h-4 text-white" />
-                      ) : (
-                        <Volume2 className="w-4 h-4 text-white" />
-                      )}
-                    </button>
+                    <div className="flex items-center space-x-2">
+                      <button
+                        onClick={() => setShowReadingPrefs((v) => !v)}
+                        className="bg-blue-500/80 hover:bg-blue-400/80 px-3 py-2 rounded-full transition-all text-white text-sm font-bold flex items-center space-x-1"
+                        title={showReadingPrefs ? 'Hide reading settings' : 'Show reading settings'}
+                      >
+                        <Sliders className="w-4 h-4" />
+                        <span className="hidden sm:inline">Reading settings</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (isTtsLoading) return;
+                          return isPlaying ? stopTextToSpeech() : playTextToSpeech(currentParagraph.content);
+                        }}
+                        disabled={isTtsLoading}
+                        className={`bg-blue-500/80 hover:bg-blue-400/80 p-2 rounded-full transition-all ${isTtsLoading ? 'opacity-70 cursor-not-allowed' : ''}`}
+                        title={isTtsLoading ? 'Preparing audio…' : (isPlaying ? "Stop reading" : "Read aloud")}
+                      >
+                        {isTtsLoading ? (
+                          <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full"></div>
+                        ) : isPlaying ? (
+                          <VolumeX className="w-4 h-4 text-white" />
+                        ) : (
+                          <Volume2 className="w-4 h-4 text-white" />
+                        )}
+                      </button>
+                    </div>
                   </div>
                   {/* Reading Preferences Controls */}
+                  {showReadingPrefs && (
                   <div className="mb-4 p-3 rounded-xl bg-white/5 border border-blue-400/30">
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                       <div className="flex flex-col">
                         <label className="text-blue-200 text-sm font-bold mb-1">Font family</label>
                         <select
@@ -1095,26 +1105,40 @@ const App = () => {
                         />
                         <div className="text-blue-300 text-xs mt-1">{readingPrefs.wordSpacing.toFixed(1)}px</div>
                       </div>
-                      <div className="flex flex-col">
-                        <label className="text-blue-200 text-sm font-bold mb-1">Text color</label>
-                        <input
-                          type="color"
-                          value={readingPrefs.textColor}
-                          onChange={(e) => setReadingPrefs({ ...readingPrefs, textColor: e.target.value })}
-                          className="w-20 h-9 p-1 bg-black/40 border border-blue-400/30 rounded"
-                        />
+                      <div className="flex flex-col sm:col-span-2 lg:col-span-1">
+                        <div className="grid grid-cols-2 gap-3 items-end">
+                          <div className="flex flex-col">
+                            <label className="text-blue-200 text-sm font-bold mb-1">Text color</label>
+                            <input
+                              type="color"
+                              value={readingPrefs.textColor}
+                              onChange={(e) => setReadingPrefs({ ...readingPrefs, textColor: e.target.value })}
+                              className="w-full h-9 p-1 bg-black/40 border border-blue-400/30 rounded"
+                            />
+                          </div>
+                          <div className="flex flex-col">
+                            <label className="text-blue-200 text-sm font-bold mb-1">Background</label>
+                            <input
+                              type="color"
+                              value={readingPrefs.backgroundColor === 'transparent' ? '#000000' : readingPrefs.backgroundColor}
+                              onChange={(e) => setReadingPrefs({ ...readingPrefs, backgroundColor: e.target.value })}
+                              className="w-full h-9 p-1 bg-black/40 border border-blue-400/30 rounded"
+                            />
+                          </div>
+                        </div>
                       </div>
-                      <div className="flex flex-col">
-                        <label className="text-blue-200 text-sm font-bold mb-1">Background</label>
-                        <input
-                          type="color"
-                          value={readingPrefs.backgroundColor === 'transparent' ? '#000000' : readingPrefs.backgroundColor}
-                          onChange={(e) => setReadingPrefs({ ...readingPrefs, backgroundColor: e.target.value })}
-                          className="w-20 h-9 p-1 bg-black/40 border border-blue-400/30 rounded"
-                        />
+                      <div className="flex items-end">
+                        <button
+                          onClick={() => setReadingPrefs(defaultReadingPrefs)}
+                          className="bg-blue-500/80 hover:bg-blue-400/80 text-white font-bold px-4 py-2 rounded-lg w-full"
+                          title="Reset reading settings to defaults"
+                        >
+                          Reset
+                        </button>
                       </div>
                     </div>
                   </div>
+                  )}
 
                   <p
                     className="leading-relaxed rounded-xl p-4"
@@ -1149,10 +1173,10 @@ const App = () => {
                       />
                       <button
                         onClick={submitUserQuestion}
-                        disabled={!userQuestion.trim() || isLoading}
+                        disabled={!userQuestion.trim() || isAsking}
                         className="bg-gradient-to-r from-blue-500 to-purple-500 text-white px-6 py-3 rounded-xl font-bold hover:from-blue-400 hover:to-purple-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        {isLoading ? 'Asking...' : 'Ask'}
+                        {isAsking ? 'Asking...' : 'Ask'}
                       </button>
                     </div>
                   </div>
@@ -1174,10 +1198,10 @@ const App = () => {
                   <div className="flex justify-end">
                     <button
                       onClick={moveToNextParagraph}
-                      disabled={isLoading}
+                      disabled={isMovingNext}
                       className="bg-gradient-to-r from-green-500 to-blue-500 text-white px-8 py-3 rounded-xl font-bold hover:from-green-400 hover:to-blue-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      {isLoading ? 'Loading...' : paragraphNumber === totalParagraphs ? 'Start Quiz!' : 'Next Paragraph'}
+                      {isMovingNext ? 'Loading...' : paragraphNumber === totalParagraphs ? 'Start Quiz!' : 'Next Paragraph'}
                     </button>
                   </div>
                 </div>
