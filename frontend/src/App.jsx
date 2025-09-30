@@ -48,6 +48,36 @@ const App = () => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentAudio, setCurrentAudio] = useState(null);
   const [isTtsLoading, setIsTtsLoading] = useState(false);
+  const [readingPrefs, setReadingPrefs] = useState(() => {
+    try {
+      const saved = localStorage.getItem('readingPrefs');
+      return saved ? JSON.parse(saved) : {
+        fontFamily: 'system',
+        fontSize: 18,
+        textColor: '#E0F2FE',
+        backgroundColor: 'transparent',
+        letterSpacing: 0,
+        lineHeight: 1.6,
+        wordSpacing: 0
+      };
+    } catch {
+      return {
+        fontFamily: 'system',
+        fontSize: 18,
+        textColor: '#E0F2FE',
+        backgroundColor: 'transparent',
+        letterSpacing: 0,
+        lineHeight: 1.6,
+        wordSpacing: 0
+      };
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('readingPrefs', JSON.stringify(readingPrefs));
+    } catch {}
+  }, [readingPrefs]);
 
   useEffect(() => {
     fetchUserStats();
@@ -996,7 +1026,110 @@ const App = () => {
                       )}
                     </button>
                   </div>
-                  <p className="text-lg text-blue-100 leading-relaxed">{currentParagraph.content}</p>
+                  {/* Reading Preferences Controls */}
+                  <div className="mb-4 p-3 rounded-xl bg-white/5 border border-blue-400/30">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                      <div className="flex flex-col">
+                        <label className="text-blue-200 text-sm font-bold mb-1">Font family</label>
+                        <select
+                          value={readingPrefs.fontFamily}
+                          onChange={(e) => setReadingPrefs({ ...readingPrefs, fontFamily: e.target.value })}
+                          className="bg-black/40 border border-blue-400/30 rounded-lg p-2 text-blue-100"
+                        >
+                          <option value="system">System UI</option>
+                          <option value="Atkinson Hyperlegible">Atkinson Hyperlegible</option>
+                          <option value="OpenDyslexic3">OpenDyslexic</option>
+                          <option value="Inter">Inter</option>
+                          <option value="Georgia, serif">Georgia</option>
+                        </select>
+                      </div>
+                      <div className="flex flex-col">
+                        <label className="text-blue-200 text-sm font-bold mb-1">Font size (px)</label>
+                        <input
+                          type="range"
+                          min="14"
+                          max="32"
+                          step="1"
+                          value={readingPrefs.fontSize}
+                          onChange={(e) => setReadingPrefs({ ...readingPrefs, fontSize: parseInt(e.target.value) })}
+                          className="w-full"
+                        />
+                        <div className="text-blue-300 text-xs mt-1">{readingPrefs.fontSize}px</div>
+                      </div>
+                      <div className="flex flex-col">
+                        <label className="text-blue-200 text-sm font-bold mb-1">Line height</label>
+                        <input
+                          type="range"
+                          min="1.2"
+                          max="2.0"
+                          step="0.1"
+                          value={readingPrefs.lineHeight}
+                          onChange={(e) => setReadingPrefs({ ...readingPrefs, lineHeight: parseFloat(e.target.value) })}
+                          className="w-full"
+                        />
+                        <div className="text-blue-300 text-xs mt-1">{readingPrefs.lineHeight.toFixed(1)}</div>
+                      </div>
+                      <div className="flex flex-col">
+                        <label className="text-blue-200 text-sm font-bold mb-1">Letter spacing (px)</label>
+                        <input
+                          type="range"
+                          min="0"
+                          max="2"
+                          step="0.1"
+                          value={readingPrefs.letterSpacing}
+                          onChange={(e) => setReadingPrefs({ ...readingPrefs, letterSpacing: parseFloat(e.target.value) })}
+                          className="w-full"
+                        />
+                        <div className="text-blue-300 text-xs mt-1">{readingPrefs.letterSpacing.toFixed(1)}px</div>
+                      </div>
+                      <div className="flex flex-col">
+                        <label className="text-blue-200 text-sm font-bold mb-1">Word spacing (px)</label>
+                        <input
+                          type="range"
+                          min="0"
+                          max="8"
+                          step="0.5"
+                          value={readingPrefs.wordSpacing}
+                          onChange={(e) => setReadingPrefs({ ...readingPrefs, wordSpacing: parseFloat(e.target.value) })}
+                          className="w-full"
+                        />
+                        <div className="text-blue-300 text-xs mt-1">{readingPrefs.wordSpacing.toFixed(1)}px</div>
+                      </div>
+                      <div className="flex flex-col">
+                        <label className="text-blue-200 text-sm font-bold mb-1">Text color</label>
+                        <input
+                          type="color"
+                          value={readingPrefs.textColor}
+                          onChange={(e) => setReadingPrefs({ ...readingPrefs, textColor: e.target.value })}
+                          className="w-20 h-9 p-1 bg-black/40 border border-blue-400/30 rounded"
+                        />
+                      </div>
+                      <div className="flex flex-col">
+                        <label className="text-blue-200 text-sm font-bold mb-1">Background</label>
+                        <input
+                          type="color"
+                          value={readingPrefs.backgroundColor === 'transparent' ? '#000000' : readingPrefs.backgroundColor}
+                          onChange={(e) => setReadingPrefs({ ...readingPrefs, backgroundColor: e.target.value })}
+                          className="w-20 h-9 p-1 bg-black/40 border border-blue-400/30 rounded"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <p
+                    className="leading-relaxed rounded-xl p-4"
+                    style={{
+                      fontFamily: readingPrefs.fontFamily === 'system' ? 'ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Inter, Atkinson Hyperlegible, OpenDyslexic3, Helvetica Neue, Arial, Noto Sans, sans-serif' : readingPrefs.fontFamily,
+                      fontSize: `${readingPrefs.fontSize}px`,
+                      color: readingPrefs.textColor,
+                      backgroundColor: readingPrefs.backgroundColor,
+                      letterSpacing: `${readingPrefs.letterSpacing}px`,
+                      lineHeight: readingPrefs.lineHeight,
+                      wordSpacing: `${readingPrefs.wordSpacing}px`
+                    }}
+                  >
+                    {currentParagraph.content}
+                  </p>
                 </div>
 
                 {/* User Question Section */}
